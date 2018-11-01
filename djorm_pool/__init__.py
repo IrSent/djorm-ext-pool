@@ -10,8 +10,6 @@ from sqlalchemy import exc
 from sqlalchemy import event
 from sqlalchemy.pool import manage
 from sqlalchemy.pool import Pool
-from sqlalchemy.event import listens_for
-
 
 POOL_PESSIMISTIC_MODE = getattr(settings, "DJORM_POOL_PESSIMISTIC", False)
 POOL_SETTINGS = getattr(settings, 'DJORM_POOL_OPTIONS', {})
@@ -49,7 +47,9 @@ def _on_connect(*args, **kwargs):
 def patch_mysql():
     class hashabledict(dict):
         def __hash__(self):
-            return hash(tuple(sorted(self.items())))
+            # return hash(tuple(sorted(self.items())))
+            # return hash(tuple(self.items()))
+            return hash(frozenset(self))
 
     class hashablelist(list):
         def __hash__(self):
@@ -85,18 +85,21 @@ def patch_mysql():
 
     try:
         from django.db.backends.mysql import base as mysql_base
-    except (ImproperlyConfigured, ImportError) as e:
+    except (ImproperlyConfigured, ImportError) as error:
+        logger.debug(f"mysql conf/import error: {error}")
         return
 
     if not hasattr(mysql_base, "_Database"):
         mysql_base._Database = mysql_base.Database
-        mysql_base.Database = ManagerProxy(manage(mysql_base._Database, **POOL_SETTINGS))
+        mysql_base.Database = ManagerProxy(manage(mysql_base._Database,
+                                                  **POOL_SETTINGS))
 
 
 def patch_postgresql():
     try:
         from django.db.backends.postgresql_psycopg2 import base as pgsql_base
-    except (ImproperlyConfigured, ImportError) as e:
+    except (ImproperlyConfigured, ImportError) as error:
+        logger.debug(f"postgres conf/import error: {error}")
         return
 
     if not hasattr(pgsql_base, "_Database"):
@@ -107,7 +110,8 @@ def patch_postgresql():
 def patch_sqlite3():
     try:
         from django.db.backends.sqlite3 import base as sqlite3_base
-    except (ImproperlyConfigured, ImportError) as e:
+    except (ImproperlyConfigured, ImportError) as error:
+        logger.debug(f"sqlite conf/import error: {error}")
         return
 
     if not hasattr(sqlite3_base, "_Database"):
